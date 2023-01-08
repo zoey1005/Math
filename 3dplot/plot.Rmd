@@ -1,0 +1,199 @@
+---
+title: "3D Plot"
+author: "Zhuoyu Jiang"
+date: "12/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = -1)
+```
+
+```{r}
+Sys.setenv(RGL_USE_NULL=TRUE)
+```
+
+Step1: Prepare Packages
+
+```{r}
+library(rgl)
+Rprof(line.profiling = TRUE)  
+options(rgl.useNULL = TRUE)
+
+list.of.packages <- c("rgl","ggplot2","knitr","rglwidget")
+new.packages <- list.of.packages[!(list.of.packages %in% 
+                                     installed.packages()[,"Package"])]
+if(length(new.packages)) 
+  install.packages(new.packages)
+lapply(list.of.packages,function(x){library(x,character.only=TRUE)})
+knit_hooks$set(webgl = hook_webgl)
+```
+
+Step2: Graph f
+
+```{r}
+k=120
+x <- seq(-k, k, length.out = 1000)
+y <- x
+f <- function(x, y) {(1-x/k)*(1+x/k)*(1-y/k)*
+    (1+y/k)*(-(y+47)*sin(sqrt(abs(y+x/2+47)))-x*sin(sqrt(abs(x-(y+47)))))}
+z <- outer(x, y, f)
+open3d()
+persp3d(x, y, z, col = "blue",xlab = "X", ylab = "Y", zlab = "f(x,y)")
+rglwidget()
+```
+
+Step3: Find local & global maximum and mark it with a red&green dot
+
+```{r}
+rm(list=ls())
+fn1 <- expression((1 - x/120)*(1 - y/120)*
+                    (1 + x/120)*(1 + y/120)*(-(y + 47)*sin(sqrt(y + x/2 + 47)) 
+                                             - x*sin(sqrt(x - (y + 47)))))
+grad1 <- deriv(expr=fn1,namevec=c("x","y"),function.arg=T)
+fn2 <- expression((1 - x/120)*(1 - y/120)*
+                    (1 + x/120)*(1 + y/120)*(-(y + 47)*sin(sqrt(y + x/2 + 47)) 
+                                             - x*sin(sqrt(-x + (y + 47)))))
+grad2 <- deriv(expr=fn2,namevec=c("x","y"),function.arg=T)
+fn3 <- expression((1 - x/120)*(1 - y/120)*
+                    (1 + x/120)*(1 + y/120)*(-(y + 47) * sin(sqrt(-y - x/2 - 47)) 
+                                             - x*sin(sqrt(x - (y + 47)))))
+grad3 <- deriv(expr=fn3,namevec=c("x","y"),function.arg=T)
+fn4 <- expression((1 - x/120)*(1 - y/120)*(1 + x/120)*(1 + y/120)
+                  *(-(y + 47) * sin(sqrt(-y - x/2 - 47)) - 
+                      x*sin(sqrt(-x + (y + 47)))))
+grad4 <- deriv(expr=fn4,namevec=c("x","y"),function.arg=T)
+opt.fn=function(x){
+  a <- x[2]+x[1]/2+47
+  b <- x[1]-x[2]-47
+  if(a>=0){
+    if(b>=0){
+      sum <- abs(attr(grad1(x=x[1],y=x[2]),"gradient")[1])+
+        abs(attr(grad1(x=x[1],y=x[2]),"gradient")[2])
+    } else {
+      sum <- abs(attr(grad2(x=x[1],y=x[2]),"gradient")[1])+
+        abs(attr(grad2(x=x[1],y=x[2]),"gradient")[2])
+    }} else { if(b>=0){
+      sum <- abs(attr(grad3(x=x[1],y=x[2]),"gradient")[1])+
+        abs(attr(grad3(x=x[1],y=x[2]),"gradient")[2])
+    } else {
+      sum <- abs(attr(grad4(x=x[1],y=x[2]),"gradient")[1])+
+        abs(attr(grad4(x=x[1],y=x[2]),"gradient")[2])
+    }}
+  return(sum)# return TRUE when its a local maximum.
+}
+
+target.fn = function(x, y, k=120) {
+  ifelse (test=((abs(x) > k) | (abs(y) > k)),yes=0, 
+          no=sum(1,(-x/k))*sum(1,(-y/k))*sum(1,(x/k))*sum(1,(y/k))
+          *(sum(-y,-47) * sin(sqrt(abs(sum(y,(x/2),47)))) - 
+              x*sin(sqrt(abs(sum(x,-y,-47))))))
+}
+
+peak.fn=function(x,y,k=120,delta=0.5,sep=20){
+  theta <- seq(-pi,pi,length=sep)
+  around <- c()
+  for(i in seq_len(sep)) {
+    around[i] <- (target.fn(x=x,y=y,k=k)>
+                    target.fn(x=(x+delta*cos(theta[i])),
+                              y=(y+delta*sin(theta[i])),k=k))
+  }
+  val <- all(around)
+  return(val)
+}
+
+points <- list()
+points$x <- seq(-120,120,length=120)
+points$y <- seq(-120,120,length=120)
+n=2
+max.local <- data.frame(X=c(-121),Y=c(-121),Z=c(0),peak=c(0))
+
+for(i in points$x){
+  for(j in points$y){
+    opt <- optim(par=c(i,j),fn=opt.fn ,method="Nelder-Mead") 
+    max.local[n,] <- c(round(opt$par[1],digits=4),round(opt$par[2],digits=4),
+                       round(target.fn(x=opt$par[1],y=opt$par[2]),digits=4),
+                       peak.fn(x=opt$par[1],y=opt$par[2]))
+    n=n+1
+  }
+}
+```
+
+```{R}
+library(dplyr)
+max.local <- max.local[-which((max.local$peak==0)|(max.local$Z<=0)),]
+max.local <- max.local[-which(duplicated(max.local)), ]
+max.local
+```
+
+```{r}
+points3d(x=c(max.local$X,max.local$X[which.max(max.local$Z)]),
+         y=c(max.local$Y,max.local$Y[which.max(max.local$Z)]),
+         z=c(max.local$Z,max(max.local$Z)),
+         col=c(rep("red",length(max.local$X)),"green"),
+         add=T,pch=3)
+rglwidget() 
+```
+
+Step4:Find the number of distinct local maximum
+
+```{r}
+nrow(distinct(max.local,max.local$Z))
+```
+
+Step5: Check system.time
+
+```{r}
+Rprof(NULL)
+su = summaryRprof(filename = "Rprof.out") 
+su$by.total
+#We can see that the optim function is the most time-spending function.
+```
+
+Speed up: Using parallel to make code use all laptop’s CPUs
+
+```{r}
+if (!require("parallel")) { # for multicore computing functions
+  install.packages("parallel")
+  stopifnot(require("parallel"))
+}
+library(parallel)
+n.cores = detectCores()
+#As we detect, the part is the most time-spending.
+points <- list()
+points$x <- seq(-120,120,length=120)
+points$y <- seq(-120,120,length=120)
+target.speed.up=function(x,y){
+  for(i in x){
+    for(j in y){
+      opt <- optim(par=c(i,j),fn=opt.fn ,method="Nelder-Mead") 
+    }
+    }
+  return(opt)
+}
+system.time(target.speed.up(points$x, points$y))
+
+
+print("Timing mapply(), one core ...")
+print(system.time(v <- mapply(FUN = target.speed.up, points$x, points$y)))
+```
+
+Uses several cores, if available.
+
+```{r}
+n.cores = detectCores()
+
+if (.Platform$OS.type == "windows") {
+  cluster = makePSOCKcluster(names = n.cores)
+  cat(sep = "", "Timing clusterMap(), ", n.cores, " cores ...")
+  print(system.time(v <- clusterMap(cl = cluster, fun = target.speed.up, points$x, points$y)))
+  stopCluster(cluster)
+} else {
+  cat(sep = "", "Timing mcmapply(), ", n.cores, " cores ...")
+  print(system.time(v <- mcmapply(FUN = target.speed.up, points$x, points$y, 
+                                  mc.cores = n.cores)))
+ # print(system.time(v <- mclapply( FUN = target.speed.up, 
+                              #    points$x, points$y,mc.cores = n.cores)))
+}
+
+```
