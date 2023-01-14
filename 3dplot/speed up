@@ -1,0 +1,37 @@
+#############################################################################
+
+opt.list = list()
+n = 1
+for(i in points$x){
+  for(j in points$y){
+    opt.list$par1[n] = optim(par=c(i,j),fn=opt.fn,method="Nelder-Mead")$par[1]
+    opt.list$par2[n] = optim(par=c(i,j),fn=opt.fn,method="Nelder-Mead")$par[2]
+    n = n+1
+  }
+}
+
+n = 1
+for (i in 1:length(opt.list$par1)){
+  max.local[n,] <- c(round(opt.list$par1[i],digits=4),
+                       round(opt.list$par2[i],digits=4),
+                       round(target.fn(x=opt.list$par1[i],y=opt.list$par2[i]),digits=4),
+                       peak.fn(x=opt.list$par1[i],y=opt.list$par2[i]))
+  n = n+1
+}
+
+# By separating the for loops, the time it takes to iterate through the points to get the max.local decreases.
+###############################################################################
+
+```
+
+```{r, warning=F}
+# ----- turn profiling off -----
+Rprof(NULL)
+
+# ----- read the log file -----
+su = summaryRprof(filename = "Rprof.out", lines = "show") 
+su$by.total
+
+
+#We see an improvement from the bottleneck due to the use of the package 'parallel' and its functions
+```
